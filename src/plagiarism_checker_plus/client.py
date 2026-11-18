@@ -22,6 +22,14 @@ class ErrorCodes:
     TEXT_TOO_SHORT = "text_too_short"
     DOC_TOO_LONG = "doc_too_long"
     INSUFFICIENT_WORDS = "insufficient_words"
+    INVALID_REQUEST = "invalid_request"
+    UNAUTHORIZED = "unauthorized"
+    INVALID_API_KEY = "invalid_api_key"
+    KEY_REVOKED = "key_revoked"
+    EMAIL_UNVERIFIED = "email_unverified"
+    NOT_FOUND = "not_found"
+    RATE_LIMITED = "rate_limited"
+    WORKERS_UNAVAILABLE = "workers_unavailable"
 
 
 class PlagiarismCheckerPlusError(Exception):

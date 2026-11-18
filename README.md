@@ -2,32 +2,53 @@
 
 Official client for the [Plagiarism Checker Plus API](https://plagiarismcheckerplus.com/integrations/api). Python 3.8+, standard library only, fully typed.
 
-The API needs a paid plan. A key on the free plan returns `403 plan_required`.
+Use it to add a **plagiarism checker API** (score plus every matching source) and an **AI detector API** (a likelihood for each sentence) to your app. Overview pages: [Plagiarism Checker API](https://plagiarismcheckerplus.com/integrations/api) · [AI Detector API](https://plagiarismcheckerplus.com/ai-detector-api) · [API reference](https://app.plagiarismcheckerplus.com/api-docs)
+
+The API needs a paid plan. A key on the free plan returns `403 plan_required`. Create a key in the web app under [Settings › API](https://app.plagiarismcheckerplus.com/settings/api).
+
+## Install
 
 ```sh
 pip install plagiarism-checker-plus
 ```
 
+The import name is `plagiarism_checker_plus`.
+
+## Quick start
+
 ```python
 import os
-from plagiarism_checker_plus import ErrorCodes, PlagiarismCheckerPlus, PlagiarismCheckerPlusError
+from plagiarism_checker_plus import PlagiarismCheckerPlus
 
 client = PlagiarismCheckerPlus(os.environ["PCP_API_KEY"])
+
+scan_id = client.create_scan(text, ["plagiarism", "ai_detect"])["id"]  # 50+ words for AI detection
+scan = client.wait_for_scan(scan_id)  # polls GET /scans/{id} until done
+
+plagiarism = scan["results"]["plagiarism"] or {}
+print("Matched:", plagiarism.get("score"), "%", [s["url"] for s in plagiarism.get("sources", [])])
+print("AI likelihood:", (scan["results"]["aiDetection"] or {}).get("score"), "%")  # a likelihood, not proof
+```
+
+## Handling errors
+
+```python
+from plagiarism_checker_plus import ErrorCodes, PlagiarismCheckerPlusError
 
 try:
     scan_id = client.create_scan(essay_text, ["plagiarism", "ai_detect"], name="essay-draft-1")["id"]
     scan = client.wait_for_scan(scan_id)
-
-    plagiarism = scan["results"].get("plagiarism") or {}
-    print("Matched:", plagiarism.get("score"), "%")
-    for source in plagiarism.get("sources", []):
-        print(source["url"])
-
-    # A likelihood, not proof that the text was written by AI.
-    print("AI likelihood:", (scan["results"].get("aiDetection") or {}).get("score"), "%")
+    if scan["status"] == "failed":
+        raise RuntimeError(f"Scan {scan_id} failed")
 except PlagiarismCheckerPlusError as error:
     if error.code == ErrorCodes.TEXT_TOO_SHORT:
         print("Send at least 30 words for plagiarism, 50 for AI detection.")
+    elif error.code == ErrorCodes.INSUFFICIENT_WORDS:
+        print("Out of words (402). Top up or wait for the monthly reset.")
+    elif error.code == ErrorCodes.PLAN_REQUIRED:
+        print("This key's plan has no API access (403).")
+    elif error.status == 429:
+        print(f"Rate limited. Retry in {error.retry_after}s.")
     else:
         raise
 ```
@@ -48,7 +69,7 @@ Failed calls raise `PlagiarismCheckerPlusError` with `status`, `code` (such as `
 
 Run the tests with `python -m unittest discover -s tests` and `PYTHONPATH=src`.
 
-## Error handling
+## Error codes
 
 Failed calls raise `PlagiarismCheckerPlusError`. It carries the HTTP status and the API error code:
 
@@ -66,7 +87,10 @@ Other codes (for example on `401`, `404`, `429` or `503`) come through as the ra
 - **An AI score is a likelihood, not proof** that someone used AI. A similarity score does not decide on its own whether text is plagiarism. Review the result yourself, and do not use either score alone to accuse anyone.
 - **The API needs a paid plan.** A key on the free plan returns `403 plan_required`.
 - Each tool you run is billed at the full word count. The rate limit is 60 requests a minute per key.
-- API documentation: https://plagiarismcheckerplus.com/integrations/api
+- Plagiarism Checker API overview: https://plagiarismcheckerplus.com/integrations/api
+- AI Detector API overview: https://plagiarismcheckerplus.com/ai-detector-api
+- API reference (try requests in the browser): https://app.plagiarismcheckerplus.com/api-docs
+- Create an API key: https://app.plagiarismcheckerplus.com/settings/api
 - The OpenAPI spec this client follows is in [`spec/openapi.json`](spec/openapi.json).
 
 ## Other languages
