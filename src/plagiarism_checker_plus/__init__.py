@@ -6,7 +6,10 @@ from .client import (
     PlagiarismCheckerPlus,
     PlagiarismCheckerPlusError,
     ScanTimeoutError,
+    WEBHOOK_SIGNATURE_HEADER,
+    WEBHOOK_TOLERANCE_SECONDS,
     parse_retry_after,
+    verify_webhook_signature,
 )
 
 __all__ = [
@@ -15,6 +18,9 @@ __all__ = [
     "PlagiarismCheckerPlus",
     "PlagiarismCheckerPlusError",
     "ScanTimeoutError",
+    "WEBHOOK_SIGNATURE_HEADER",
+    "WEBHOOK_TOLERANCE_SECONDS",
     "parse_retry_after",
+    "verify_webhook_signature",
 ]
-__version__ = "1.0.0"
+__version__ = "1.1.0"

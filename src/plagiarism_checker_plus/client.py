@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import time
 import urllib.error
@@ -11,29 +13,47 @@ from email.utils import parsedate_to_datetime
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
 DEFAULT_BASE_URL = "https://app.plagiarismcheckerplus.com/api/public/v1"
-VERSION = "1.0.0"
+VERSION = "1.1.0"
+
+#: Header that carries the webhook signature.
+WEBHOOK_SIGNATURE_HEADER = "PCP-Signature"
+#: How old a signed webhook timestamp may be, in seconds, before it is rejected.
+WEBHOOK_TOLERANCE_SECONDS = 300
 
 # (method, url, headers, body) -> (status, headers, body)
 Transport = Callable[[str, str, Mapping[str, str], Optional[bytes]], Tuple[int, Mapping[str, str], bytes]]
 
 
 class ErrorCodes:
+    #: Deprecated: no longer returned. Free accounts get a free API trial and free test keys.
     PLAN_REQUIRED = "plan_required"
     TEXT_TOO_SHORT = "text_too_short"
     DOC_TOO_LONG = "doc_too_long"
+    #: 402: not enough words across all sources (body: wordsNeeded, wordsAvailable, balances, billingUrl).
     INSUFFICIENT_WORDS = "insufficient_words"
+    #: 402: the free API trial cannot cover the request (body: wordsNeeded, trialRemaining, trialTotal, billingUrl).
+    TRIAL_EXHAUSTED = "trial_exhausted"
+    #: 402: the key's monthly word cap would be exceeded (body: wordsNeeded, monthlyWordCap, usedThisMonth).
+    KEY_CAP_REACHED = "key_cap_reached"
     INVALID_REQUEST = "invalid_request"
+    INVALID_JSON = "invalid_json"
     UNAUTHORIZED = "unauthorized"
     INVALID_API_KEY = "invalid_api_key"
     KEY_REVOKED = "key_revoked"
     EMAIL_UNVERIFIED = "email_unverified"
+    FORBIDDEN = "forbidden"
     NOT_FOUND = "not_found"
     RATE_LIMITED = "rate_limited"
     WORKERS_UNAVAILABLE = "workers_unavailable"
+    INTERNAL_ERROR = "internal_error"
 
 
 class PlagiarismCheckerPlusError(Exception):
-    """A non-2xx response. `code` is the API's error code, such as plan_required."""
+    """A non-2xx response. `code` is the API's error code, such as insufficient_words.
+
+    `body` is the parsed response; `details` is its `error` object, which on 402
+    errors carries fields such as wordsNeeded and billingUrl.
+    """
 
     def __init__(
         self,
@@ -48,6 +68,12 @@ class PlagiarismCheckerPlusError(Exception):
         self.code = code
         self.retry_after = retry_after
         self.body = body
+
+    @property
+    def details(self) -> Dict[str, Any]:
+        """The response's `error` object (code, message and any detail fields), or {}."""
+        error = self.body.get("error") if isinstance(self.body, dict) else None
+        return error if isinstance(error, dict) else {}
 
 
 class ScanTimeoutError(Exception):
@@ -69,6 +95,44 @@ def parse_retry_after(value: Optional[str]) -> Optional[float]:
     except (TypeError, ValueError):
         return None
     return max(0.0, when.timestamp() - time.time())
+
+
+def verify_webhook_signature(
+    secret: str,
+    header: Optional[str],
+    body: Any,
+    tolerance: float = WEBHOOK_TOLERANCE_SECONDS,
+    now: Optional[float] = None,
+) -> bool:
+    """Check a webhook's PCP-Signature header against the raw request body.
+
+    The header is ``t=<unix seconds>,v1=<hex HMAC-SHA256(secret, "<t>.<raw body>")>``.
+    Pass the body exactly as received (bytes or str), before JSON parsing.
+    Returns False for a missing or malformed header, a wrong signature, or a
+    timestamp more than ``tolerance`` seconds from ``now`` (default: the current time).
+    Signatures are compared in constant time.
+    """
+    if not secret or not header or body is None:
+        return False
+    timestamp: Optional[int] = None
+    signatures: List[str] = []
+    for part in str(header).split(","):
+        key, sep, value = part.partition("=")
+        if not sep:
+            continue
+        key, value = key.strip(), value.strip()
+        if key == "t" and value.isdigit() and value.isascii():
+            timestamp = int(value)
+        elif key == "v1" and value and all(c in "0123456789abcdefABCDEF" for c in value):
+            signatures.append(value.lower())
+    if timestamp is None or not signatures:
+        return False
+    current = time.time() if now is None else now
+    if abs(current - timestamp) > tolerance:
+        return False
+    raw = body.encode("utf-8") if isinstance(body, str) else bytes(body)
+    expected = hmac.new(secret.encode("utf-8"), str(timestamp).encode("ascii") + b"." + raw, hashlib.sha256).hexdigest()
+    return any(hmac.compare_digest(expected, signature) for signature in signatures)
 
 
 def _urllib_transport(timeout: float) -> Transport:
@@ -152,7 +216,7 @@ class PlagiarismCheckerPlus:
         return self._request("GET", "/scans", query={"page": page, "limit": limit})
 
     def get_account(self) -> Dict[str, Any]:
-        """Plan and remaining words."""
+        """Plan, word balances, free API trial (``trial``), ``balances``, ``autoTopup`` and this key's ``key`` mode and cap."""
         return self._request("GET", "/account")
 
     def wait_for_scan(
@@ -189,5 +253,8 @@ __all__: List[str] = [
     "PlagiarismCheckerPlus",
     "PlagiarismCheckerPlusError",
     "ScanTimeoutError",
+    "WEBHOOK_SIGNATURE_HEADER",
+    "WEBHOOK_TOLERANCE_SECONDS",
     "parse_retry_after",
+    "verify_webhook_signature",
 ]

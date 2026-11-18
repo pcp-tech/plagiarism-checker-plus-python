@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "plagiarism-checker-plus"
-version = "1.0.0"
+version = "1.1.0"
 description = "Official Python client for the Plagiarism Checker Plus API: plagiarism checker API with linked sources and AI detector API with a per-sentence AI likelihood."
 readme = "README.md"
 license = "MIT"
@@ -23,6 +23,7 @@ keywords = [
   "plagiarism",
   "sdk",
   "api client",
+  "webhooks",
 ]
 classifiers = [
   "Development Status :: 5 - Production/Stable",
@@ -47,6 +48,7 @@ dependencies = []
 Homepage = "https://plagiarismcheckerplus.com/integrations/api"
 Documentation = "https://app.plagiarismcheckerplus.com/api-docs"
 "AI Detector API" = "https://plagiarismcheckerplus.com/ai-detector-api"
+Pricing = "https://plagiarismcheckerplus.com/api-pricing"
 Repository = "https://github.com/pcp-tech/plagiarism-checker-plus-python"
 Issues = "https://github.com/pcp-tech/plagiarism-checker-plus-python/issues"
 
